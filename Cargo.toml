@@ -1,0 +1,9 @@
+[package]
+name = "dwarf-to-json"
+version = "0.1.0"
+authors = ["Yury Delendik <ydelendik@mozilla.com>"]
+
+[dependencies]
+vlq = "0.5.1"
+gimli = "0.15.0"
+rustc-serialize = "0.3.24"
