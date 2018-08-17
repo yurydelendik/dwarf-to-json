@@ -15,7 +15,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "dwarf-to-json"
 version = "0.1.0"
 dependencies = [
- "gimli 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gimli 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)",
  "vlq 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -27,12 +27,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "gimli"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "fallible-iterator 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "stable_deref_trait 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -46,6 +47,11 @@ version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "stable_deref_trait"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "vlq"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -54,7 +60,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)" = "a1e964f9e24d588183fcb43503abda40d288c8657dfc27311516ce2f05675aef"
 "checksum byteorder 1.2.4 (registry+https://github.com/rust-lang/crates.io-index)" = "8389c509ec62b9fe8eca58c502a0acaf017737355615243496cde4994f8fa4f9"
 "checksum fallible-iterator 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "ea79295a7a3e0d77f19e763cf1fe7189cd95fc2b36735ea0ea6b711a7380f509"
-"checksum gimli 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ffa1f5db1b7b50875bd8fc111f64025b05c01c7a6f8f36de0da9d53d02ba5fac"
+"checksum gimli 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3d080d7b981be6932486671c6cb0d8a82ed61d88b81419d39b33ea8966717f4d"
 "checksum nodrop 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)" = "9a2228dca57108069a5262f2ed8bd2e82496d2e074a06d1ccc7ce1687b6ae0a2"
 "checksum rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)" = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"
+"checksum stable_deref_trait 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "dba1a27d3efae4351c8051072d619e3ade2820635c3958d826bfea39d59b54c8"
 "checksum vlq 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "65dd7eed29412da847b0f78bcec0ac98588165988a8cfe41d4ea1d429f8ccfff"

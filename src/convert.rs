@@ -1,5 +1,5 @@
 use wasm::WasmDecoder;
-use dwarf::get_debug_loc;
+use dwarf::{get_debug_loc, get_debug_scopes};
 use to_json::convert_debug_info_to_json;
 
 use std::collections::HashMap;
@@ -43,8 +43,13 @@ fn read_debug_sections(input: &[u8]) -> (HashMap<&str, &[u8]>, Option<usize>) {
 
 
 
-pub fn convert(input: &[u8]) -> Vec<u8> {
+pub fn convert(input: &[u8], x_scopes: bool) -> Vec<u8> {
     let (sections, code_section_offset) = read_debug_sections(input);
     let info = get_debug_loc(&sections);
-    convert_debug_info_to_json(&info, code_section_offset.unwrap_or(0) as i64)
+    let scopes = if x_scopes {
+        Some(get_debug_scopes(&sections, &info.sources))
+    } else {
+        None
+    };
+    convert_debug_info_to_json(&info, scopes, code_section_offset.unwrap_or(0) as i64)
 }
