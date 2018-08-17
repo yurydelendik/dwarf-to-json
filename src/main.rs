@@ -5,7 +5,8 @@ use std::path::Path;
 use convert::convert;
 
 extern crate gimli;
-extern crate rustc_serialize;
+#[macro_use]
+extern crate serde_json;
 extern crate vlq;
 
 mod convert;

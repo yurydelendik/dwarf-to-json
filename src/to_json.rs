@@ -1,39 +1,38 @@
 use dwarf::{LocationInfo, DebugInfoObj, DebugAttrValue};
-use rustc_serialize::json::{Json, ToJson};
-use std::collections::BTreeMap;
+use serde_json;
+use serde_json::{Value, Number, Map, to_vec_pretty};
 use std::str;
-use std::io::Write;
 use vlq::encode;
 
-pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Json {
+pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Value {
     let mut result = Vec::new();
     for entry in infos {
-        let mut dict = BTreeMap::new();
-        dict.insert("tag".to_string(), entry.tag.to_json());
+        let mut dict = Map::new();
+        dict.insert("tag".to_string(), json!(entry.tag));
         for (attr_name, attr_value) in entry.attrs.iter() {
             let value = match attr_value {
-                DebugAttrValue::I64(i) => i.to_json(),
-                DebugAttrValue::Bool(b) => b.to_json(),
-                DebugAttrValue::String(s) => s.to_json(),
+                DebugAttrValue::I64(i) => json!(i),
+                DebugAttrValue::Bool(b) => json!(b),
+                DebugAttrValue::String(s) => json!(s),
                 DebugAttrValue::Ranges(ranges) => {
                     let mut r = Vec::new();
                     for range in ranges {
-                        r.push(vec![range.0, range.1].to_json());
+                        r.push(vec![json!(range.0), json!(range.1)]);
                     }
-                    r.to_json()
+                    json!(r)
                 },
-                DebugAttrValue::Expression => "<expr>".to_json(),
-                DebugAttrValue::Ignored => "<ignored>".to_json(),
-                DebugAttrValue::Unknown => "???".to_json(),
+                DebugAttrValue::Expression => json!("<expr>"),
+                DebugAttrValue::Ignored => json!("<ignored>"),
+                DebugAttrValue::Unknown => json!("???"),
             };
             dict.insert(attr_name.to_string(), value);
         }
         if entry.children.len() > 0 {
             dict.insert("children".to_string(), convert_scopes(&entry.children));
         }
-        result.push(Json::Object(dict));
+        result.push(json!(dict));
     }
-    result.to_json()
+    json!(result)
 }
 
 pub fn convert_debug_info_to_json(di: &LocationInfo, infos: Option<Vec<DebugInfoObj>>, code_section_offset: i64) -> Vec<u8> {
@@ -70,20 +69,16 @@ pub fn convert_debug_info_to_json(di: &LocationInfo, infos: Option<Vec<DebugInfo
     let mappings = str::from_utf8(&buffer).unwrap();
     let names: Vec<String> = Vec::new();
 
-    let mut root = BTreeMap::new();
-    root.insert("version".to_string(), 3.to_json());
-    root.insert("sources".to_string(), di.sources.to_json());
-    root.insert("names".to_string(), names.to_json());
-    root.insert("mappings".to_string(), mappings.to_json());
+    let mut root = Map::new();
+    root.insert("version".to_string(), json!(3));
+    root.insert("sources".to_string(), json!(di.sources));
+    root.insert("names".to_string(), json!(names));
+    root.insert("mappings".to_string(), json!(mappings));
     if infos.is_some() {
-        let mut x_scopes = BTreeMap::new();
+        let mut x_scopes = Map::new();
         x_scopes.insert("debug_info".to_string(), convert_scopes(&infos.unwrap()));
-        x_scopes.insert("code_section_offset".to_string(), code_section_offset.to_json());
-        root.insert("x-scopes".to_string(), Json::Object(x_scopes));
+        x_scopes.insert("code_section_offset".to_string(), json!(code_section_offset));
+        root.insert("x-scopes".to_string(), json!(x_scopes));
     }
-    let mut result = Vec::new();
-    result
-        .write(&Json::Object(root).to_string().as_bytes())
-        .expect("???");
-    result
+    to_vec_pretty(&json!(root)).expect("???")
 }
