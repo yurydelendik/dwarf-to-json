@@ -8,5 +8,5 @@ vlq = "0.5.1"
 gimli = "0.16.0"
 serde_json = "1.0.26"
 
-#[lib]
-#crate-type = ["cdylib"]
+[lib]
+crate-type = ["cdylib"]

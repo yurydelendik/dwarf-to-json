@@ -1,0 +1,33 @@
+<html>
+<body>
+  <script>
+    function convert_dwarf(wasm, instance) {
+      const { memory, alloc_mem, free_mem, convert_dwarf } = instance.exports;
+      const wasmPtr = alloc_mem(wasm.byteLength);
+      new Uint8Array(memory.buffer, wasmPtr, wasm.byteLength).set(new Uint8Array(wasm));
+      const resultPtr = alloc_mem(12);
+      convert_dwarf(wasmPtr, wasm.byteLength, resultPtr, resultPtr + 4);
+      free_mem(wasmPtr);
+      const resultView = new DataView(memory.buffer, resultPtr, 12);
+      const outputPtr = resultView.getUint32(0, true), outputLen = resultView.getUint32(4, true);
+      free_mem(resultPtr);
+      const output = utf8Decoder.decode(new Uint8Array(memory.buffer, outputPtr, outputLen));
+      free_mem(outputPtr);
+      return output;
+    }
+
+    async function run(instance) {
+      const wasm = await (await fetch("../target/wasm32-unknown-unknown/debug/dwarf_to_json.wasm")).arrayBuffer();
+      const output = convert_dwarf(wasm, instance);
+      console.log(JSON.parse(output));
+    }
+
+    const imports = { };
+    const utf8Decoder = new TextDecoder("utf-8");
+
+    fetch("../target/wasm32-unknown-unknown/release/dwarf_to_json.wasm")
+      .then(res => res.arrayBuffer())
+      .then(buffer => WebAssembly.instantiate(buffer, imports))
+      .then(({instance}) => run(instance));
+  </script>
+</body></html>
