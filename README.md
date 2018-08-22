@@ -8,6 +8,6 @@ It is planned to implement serialize and extends the JSON with one additional fi
 
 ```
 cargo +nightly build --target=wasm32-unknown-unknown --lib --release
-cd ./target/wasm32-unknown-unknown/release/dwarf_to_json.wasm \
-  $DEBUGGER_HTML/asserts/wasm/
+cp ./target/wasm32-unknown-unknown/release/dwarf_to_json.wasm \
+  $DEBUGGER_HTML/assets/wasm/
 ```

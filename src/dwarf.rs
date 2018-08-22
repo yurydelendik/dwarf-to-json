@@ -3,11 +3,8 @@ use std::collections::HashMap;
 
 use gimli;
 
-use gimli::{
-    DebugAbbrev, DebugInfo, DebugLine, DebugStr, 
-    DebugRanges, DebugRngLists, DebugLoc, DebugLocLists, 
-    RangeLists, LocationLists, LittleEndian, AttributeValue
-};
+use gimli::{DebugAbbrev, DebugInfo, DebugLine, DebugStr, DebugRanges, DebugRngLists, DebugLoc,
+            DebugLocLists, RangeLists, LocationLists, LittleEndian, AttributeValue};
 
 trait Reader: gimli::Reader<Offset = usize> {}
 
@@ -24,7 +21,7 @@ pub enum DebugAttrValue<'a> {
     Ranges(Vec<(i64, i64)>),
     Expression,
     Ignored,
-    Unknown
+    Unknown,
 }
 pub struct DebugInfoObj<'a> {
     pub tag: &'static str,
@@ -43,11 +40,14 @@ fn enum_to_str(s: Option<&'static str>) -> DebugAttrValue {
     DebugAttrValue::String(s3)
 }
 
-pub fn get_debug_scopes<'b>(debug_sections: &'b HashMap<&str, &[u8]>, sources: &Vec<String>) -> Vec<DebugInfoObj<'b>> {
+pub fn get_debug_scopes<'b>(
+    debug_sections: &'b HashMap<&str, &[u8]>,
+    sources: &Vec<String>,
+) -> Vec<DebugInfoObj<'b>> {
     // see https://gist.github.com/yurydelendik/802f36983d50cedb05f984d784dc5159
     let ref debug_str = DebugStr::new(&debug_sections[".debug_str"], LittleEndian);
     let ref debug_abbrev = DebugAbbrev::new(&debug_sections[".debug_abbrev"], LittleEndian);
-    let ref debug_info = DebugInfo::new(&debug_sections[".debug_info"], LittleEndian);    
+    let ref debug_info = DebugInfo::new(&debug_sections[".debug_info"], LittleEndian);
 
     let debug_ranges = DebugRanges::new(&debug_sections[".debug_ranges"], LittleEndian);
     let debug_rnglists = DebugRngLists::new(&[], LittleEndian);
@@ -71,8 +71,8 @@ pub fn get_debug_scopes<'b>(debug_sections: &'b HashMap<&str, &[u8]>, sources: &
         // Iterate over all of this compilation unit's entries.
         let mut entries = unit.entries(&abbrevs);
         while let Some((depth_delta, entry)) = entries.next_dfs().expect("???") {
-           let tag_value = &entry.tag().static_string().unwrap()[ /*DW_TAG_*/ 7..];
-           let mut attrs_values = Vec::new();
+            let tag_value = &entry.tag().static_string().unwrap()[ /*DW_TAG_*/ 7..];
+            let mut attrs_values = Vec::new();
             let mut attrs = entry.attrs();
             while let Some(attr) = attrs.next().unwrap() {
                 let attr_name = &attr.name().static_string().unwrap()[ /*DW_AT_*/ 6 ..];
@@ -83,9 +83,13 @@ pub fn get_debug_scopes<'b>(debug_sections: &'b HashMap<&str, &[u8]>, sources: &
                     AttributeValue::Sdata(i) => DebugAttrValue::I64(i),
                     AttributeValue::DebugLineRef(o) => DebugAttrValue::I64(o.0 as i64),
                     AttributeValue::Flag(f) => DebugAttrValue::Bool(f),
-                    AttributeValue::FileIndex(i) => DebugAttrValue::String("sdfasdf"),
+                    AttributeValue::FileIndex(_i) => DebugAttrValue::String("?? FileIndex"),
                     AttributeValue::DebugStrRef(r) => DebugAttrValue::String(
-                        debug_str.get_str(r).expect("string").to_string().expect("???")
+                        debug_str
+                            .get_str(r)
+                            .expect("string")
+                            .to_string()
+                            .expect("???"),
                     ),
                     AttributeValue::RangeListsRef(r) => {
                         let low_pc = 0;
@@ -98,7 +102,7 @@ pub fn get_debug_scopes<'b>(debug_sections: &'b HashMap<&str, &[u8]>, sources: &
                             result.push((range.begin as i64, range.end as i64));
                         }
                         DebugAttrValue::Ranges(result)
-                    },
+                    }
                     // AttributeValue::LocationListsRef(r) => {
                     //     let low_pc = 0;
                     //     let mut locs = loclists
@@ -109,9 +113,7 @@ pub fn get_debug_scopes<'b>(debug_sections: &'b HashMap<&str, &[u8]>, sources: &
                     //     }
                     //     DebugAttrValue::Ignored
                     // },
-                    AttributeValue::Exprloc(expr) => {
-                        DebugAttrValue::Expression
-                    },
+                    AttributeValue::Exprloc(_expr) => DebugAttrValue::Expression,
                     AttributeValue::Encoding(e) => enum_to_str(e.static_string()),
                     AttributeValue::DecimalSign(e) => enum_to_str(e.static_string()),
                     AttributeValue::Endianity(e) => enum_to_str(e.static_string()),
@@ -124,19 +126,20 @@ pub fn get_debug_scopes<'b>(debug_sections: &'b HashMap<&str, &[u8]>, sources: &
                     AttributeValue::CallingConvention(e) => enum_to_str(e.static_string()),
                     AttributeValue::Inline(e) => enum_to_str(e.static_string()),
                     AttributeValue::Ordering(e) => enum_to_str(e.static_string()),
-                    AttributeValue::UnitRef(_) | AttributeValue::DebugInfoRef(_) => {
+                    AttributeValue::UnitRef(_) |
+                    AttributeValue::DebugInfoRef(_) => {
                         // Types and stuff
                         DebugAttrValue::Ignored
-                    },
-                    _ => { 
+                    }
+                    _ => {
                         println!("{:?}", attr.value());
                         DebugAttrValue::Unknown
-                    },
+                    }
                 };
                 attrs_values.push((attr_name, attr_value));
             }
             if depth_delta <= 0 && stack.len() > 1 {
-                for i in 0..1 - depth_delta {
+                for _ in 0..1 - depth_delta {
                     let past = stack.pop().unwrap();
                     stack.last_mut().unwrap().children.push(past);
                 }
@@ -222,10 +225,15 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> LocationInfo {
                     } else {
                         String::from("<unknown>")
                     };
-                    let index = sources.len();
-                    sources.push(file_path);
-                    source_to_id_map.insert(file_index, index);
-                    index
+                    sources
+                        .iter()
+                        .position(|&ref p| *p == file_path)
+                        .unwrap_or_else(|| {
+                            let index = sources.len();
+                            sources.push(file_path);
+                            source_to_id_map.insert(file_index, index);
+                            index
+                        })
                 } else {
                     *source_to_id_map.get(&file_index).unwrap() as usize
                 };

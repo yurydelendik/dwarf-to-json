@@ -14,7 +14,7 @@ mod wasm;
 mod dwarf;
 mod to_json;
 
-const INPUT_FILE: &str = "/Users/yury/Work/old-man-sandbox/rust-wasm-hey/hey.wasm";
+const INPUT_FILE: &str = "/Users/yury/Work/old-man-sandbox/rust-wasm-hey/hey.dbg.wasm";
 const OUTPUT_FILE: &str = "./test.json";
 
 fn main() {

@@ -20,7 +20,7 @@ pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Value {
                         r.push(vec![json!(range.0), json!(range.1)]);
                     }
                     json!(r)
-                },
+                }
                 DebugAttrValue::Expression => json!("<expr>"),
                 DebugAttrValue::Ignored => json!("<ignored>"),
                 DebugAttrValue::Unknown => json!("???"),
@@ -35,7 +35,11 @@ pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Value {
     json!(result)
 }
 
-pub fn convert_debug_info_to_json(di: &LocationInfo, infos: Option<Vec<DebugInfoObj>>, code_section_offset: i64) -> Vec<u8> {
+pub fn convert_debug_info_to_json(
+    di: &LocationInfo,
+    infos: Option<Vec<DebugInfoObj>>,
+    code_section_offset: i64,
+) -> Vec<u8> {
     let mut buffer = Vec::new();
     let mut last_address = 0;
     let mut last_source_id = 0;
@@ -77,7 +81,10 @@ pub fn convert_debug_info_to_json(di: &LocationInfo, infos: Option<Vec<DebugInfo
     if infos.is_some() {
         let mut x_scopes = Map::new();
         x_scopes.insert("debug_info".to_string(), convert_scopes(&infos.unwrap()));
-        x_scopes.insert("code_section_offset".to_string(), json!(code_section_offset));
+        x_scopes.insert(
+            "code_section_offset".to_string(),
+            json!(code_section_offset),
+        );
         root.insert("x-scopes".to_string(), json!(x_scopes));
     }
     to_vec_pretty(&json!(root)).expect("???")
