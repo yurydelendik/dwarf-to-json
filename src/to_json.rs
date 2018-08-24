@@ -1,6 +1,5 @@
 use dwarf::{LocationInfo, DebugInfoObj, DebugAttrValue};
-use serde_json;
-use serde_json::{Value, Number, Map, to_vec_pretty};
+use serde_json::{Value, Map, to_vec_pretty};
 use std::str;
 use vlq::encode;
 

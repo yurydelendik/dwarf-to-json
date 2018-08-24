@@ -1,5 +1,4 @@
 use std::slice;
-use std::str;
 use std::mem;
 
 use convert::convert;

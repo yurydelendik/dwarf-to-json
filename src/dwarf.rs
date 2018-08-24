@@ -1,11 +1,9 @@
-use std::str;
 use std::collections::HashMap;
 
 use gimli;
 
-use gimli::{CompilationUnitHeader, DebugAbbrev, DebugInfo, DebugLine, DebugStr, DebugRanges,
-            DebugRngLists, DebugLoc, DebugLocLists, RangeLists, LocationLists, LittleEndian,
-            AttributeValue};
+use gimli::{DebugAbbrev, DebugInfo, DebugLine, DebugStr, DebugRanges, DebugRngLists, DebugLoc,
+            DebugLocLists, RangeLists, LocationLists, LittleEndian, AttributeValue};
 
 trait Reader: gimli::Reader<Offset = usize> {}
 
@@ -50,7 +48,6 @@ fn is_inlined_subprogram(item: &DebugInfoObj) -> bool {
 
 fn remove_dead_functions(items: &mut Vec<DebugInfoObj>) {
     let mut dead = Vec::new();
-    let i = 0;
     for (i, mut item) in items.iter_mut().enumerate() {
         if is_subprogram(&item) {
             let low_and_high_pc = {
@@ -279,9 +276,9 @@ pub fn get_debug_scopes<'b>(
                     AttributeValue::FileIndex(i) => DebugAttrValue::I64(
                         get_source_id(sources, &unit_infos, i),
                     ),
-                    AttributeValue::DebugStrRef(r) => DebugAttrValue::String(
+                    AttributeValue::DebugStrRef(str_offset) => DebugAttrValue::String(
                         debug_str
-                            .get_str(r)
+                            .get_str(str_offset)
                             .expect("string")
                             .to_string()
                             .expect("???"),
@@ -321,7 +318,24 @@ pub fn get_debug_scopes<'b>(
                     AttributeValue::CallingConvention(e) => enum_to_str(e.static_string()),
                     AttributeValue::Inline(e) => enum_to_str(e.static_string()),
                     AttributeValue::Ordering(e) => enum_to_str(e.static_string()),
-                    AttributeValue::UnitRef(_) |
+                    AttributeValue::UnitRef(offset) => {
+                        let mut unit_entries =
+                            unit.entries_at_offset(&abbrevs, offset).expect("unitref");
+                        unit_entries.next_entry().unwrap();
+                        let entry = unit_entries.current().expect("unitentry");
+                        let name = if let Some(AttributeValue::DebugStrRef(str_offset)) =
+                            entry.attr_value(gimli::DW_AT_linkage_name).expect("unitref attr")
+                        {
+                            debug_str
+                                .get_str(str_offset)
+                                .expect("string")
+                                .to_string()
+                                .expect("???")
+                        } else {
+                            ""
+                        };
+                        DebugAttrValue::String(name)
+                    }
                     AttributeValue::DebugInfoRef(_) => {
                         // Types and stuff
                         DebugAttrValue::Ignored
