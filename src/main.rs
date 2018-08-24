@@ -19,6 +19,6 @@ const OUTPUT_FILE: &str = "./test.json";
 
 fn main() {
     let wasm = fs::read(Path::new(INPUT_FILE)).expect("failed to read wasm input");
-    let json = convert(&wasm, false);
+    let json = convert(&wasm, true);
     fs::write(Path::new(OUTPUT_FILE), &json).expect("failed to write JSON");
 }

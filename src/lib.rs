@@ -40,9 +40,10 @@ pub extern "C" fn convert_dwarf(
     wasm_len: usize,
     output: *mut *const u8,
     output_len: *mut usize,
+    enabled_x_scopes: bool,
 ) {
     let wasm_bytes = unsafe { slice::from_raw_parts(wasm, wasm_len) };
-    let json = convert(&wasm_bytes, false);
+    let json = convert(&wasm_bytes, enabled_x_scopes);
     unsafe {
         *output = alloc_mem(json.len()) as *const u8;
         *output_len = json.len();

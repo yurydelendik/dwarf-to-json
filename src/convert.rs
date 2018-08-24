@@ -74,7 +74,7 @@ pub fn convert(input: &[u8], x_scopes: bool) -> Vec<u8> {
     let (sections, code_section_offset) = read_debug_sections(input);
     let mut info = get_debug_loc(&sections);
     let scopes = if x_scopes {
-        Some(get_debug_scopes(&sections, &info.sources))
+        Some(get_debug_scopes(&sections, &mut info.sources))
     } else {
         None
     };

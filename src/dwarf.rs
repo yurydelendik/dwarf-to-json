@@ -3,8 +3,9 @@ use std::collections::HashMap;
 
 use gimli;
 
-use gimli::{DebugAbbrev, DebugInfo, DebugLine, DebugStr, DebugRanges, DebugRngLists, DebugLoc,
-            DebugLocLists, RangeLists, LocationLists, LittleEndian, AttributeValue};
+use gimli::{CompilationUnitHeader, DebugAbbrev, DebugInfo, DebugLine, DebugStr, DebugRanges,
+            DebugRngLists, DebugLoc, DebugLocLists, RangeLists, LocationLists, LittleEndian,
+            AttributeValue};
 
 trait Reader: gimli::Reader<Offset = usize> {}
 
@@ -25,12 +26,91 @@ pub enum DebugAttrValue<'a> {
 }
 pub struct DebugInfoObj<'a> {
     pub tag: &'static str,
-    pub attrs: Vec<(&'static str, DebugAttrValue<'a>)>,
+    pub attrs: HashMap<&'static str, DebugAttrValue<'a>>,
     pub children: Vec<DebugInfoObj<'a>>,
 }
 
+fn is_out_of_range(low_pc: i64, high_pc: i64) -> bool {
+    let fn_size = (high_pc - low_pc) as u32;
+    let fn_size_field_len = ((fn_size + 1).next_power_of_two().trailing_zeros() + 6) / 7;
+    low_pc < 1 + fn_size_field_len as i64
+}
+
+fn is_subprogram(item: &DebugInfoObj) -> bool {
+    if let Some(DebugAttrValue::String("subprogram")) = item.attrs.get("tag") {
+        true
+    } else {
+        false
+    }
+}
+
+fn is_inlined_subprogram(item: &DebugInfoObj) -> bool {
+    item.attrs.get("inline").is_some()
+}
+
 fn remove_dead_functions(items: &mut Vec<DebugInfoObj>) {
-    // TODO
+    let mut dead = Vec::new();
+    let i = 0;
+    for (i, mut item) in items.iter_mut().enumerate() {
+        if is_subprogram(&item) {
+            let low_and_high_pc = {
+                let low_pc = item.attrs.get("low_pc");
+                if low_pc.is_some() {
+                    let high_pc = item.attrs.get("high_pc");
+                    if let (DebugAttrValue::I64(low_pc_val), DebugAttrValue::I64(high_pc_val)) =
+                        (low_pc.unwrap(), high_pc.unwrap())
+                    {
+                        Some((*low_pc_val, *high_pc_val))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+            if let Some((low_pc_val, high_pc_val)) = low_and_high_pc {
+                if is_out_of_range(low_pc_val, high_pc_val) {
+                    if is_inlined_subprogram(&item) {
+                        item.attrs.remove("low_pc");
+                        item.attrs.remove("high_pc");
+                    } else {
+                        dead.push(i);
+                    }
+                    continue;
+                }
+            }
+        }
+
+        let present_ranges_are_empty =
+            if let Some(DebugAttrValue::Ranges(ref mut ranges)) = item.attrs.get_mut("ranges") {
+                let mut i = 0;
+                while i != ranges.len() {
+                    if is_out_of_range(ranges[i].0, ranges[i].1) {
+                        ranges.remove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
+                ranges.len() == 0
+            } else {
+                false
+            };
+        if present_ranges_are_empty && is_subprogram(&item) {
+            if is_inlined_subprogram(&item) {
+                item.attrs.remove("ranges");
+            } else {
+                dead.push(i);
+            }
+            continue;
+        }
+
+        if item.children.len() > 0 {
+            remove_dead_functions(&mut item.children);
+        }
+    }
+    for i in dead.iter().rev() {
+        items.remove(*i);
+    }
 }
 
 fn enum_to_str(s: Option<&'static str>) -> DebugAttrValue {
@@ -40,14 +120,72 @@ fn enum_to_str(s: Option<&'static str>) -> DebugAttrValue {
     DebugAttrValue::String(s3)
 }
 
+struct UnitInfos<R: Reader> {
+    address_size: u8,
+    base_address: u64,
+    line_program: Option<gimli::IncompleteLineNumberProgram<R>>,
+    comp_dir: Option<R>,
+    comp_name: Option<R>,
+}
+
+fn get_source_id<R: Reader>(
+    sources: &mut Vec<String>,
+    unit: &UnitInfos<R>,
+    file_index: u64,
+) -> i64 {
+    const INVALID_INDEX: i64 = -1;
+    if file_index == 0 {
+        return INVALID_INDEX;
+    }
+    let header = match unit.line_program {
+        Some(ref program) => program.header(),
+        None => return INVALID_INDEX,
+    };
+    let file = match header.file(file_index) {
+        Some(header) => header,
+        None => return INVALID_INDEX,
+    };
+
+    let mut file_name: String = String::from(file.path_name().to_string_lossy().unwrap());
+    if let Some(directory) = file.directory(header) {
+        let directory = directory.to_string_lossy().unwrap();
+        let prefix = if !directory.starts_with('/') {
+            if let Some(ref comp_dir) = unit.comp_dir {
+                format!("{}/", comp_dir.to_string_lossy().unwrap())
+            } else {
+                String::from("")
+            }
+        } else {
+            String::from("")
+        };
+        file_name = format!("{}{}/{}", prefix, directory, &file_name);
+    }
+    (if let Some(position) = sources.iter().position(|&ref x| *x == file_name) {
+         position
+     } else {
+         let id = sources.len();
+         sources.push(file_name);
+         id
+     }) as i64
+}
+
+fn decode_data2(d: &[u8]) -> i64 {
+    (d[0] as i64) | ((d[1] as i64) << 8)
+}
+
+fn decode_data4(d: &[u8]) -> i64 {
+    (d[0] as i64) | ((d[1] as i64) << 8) | ((d[2] as i64) << 16) | ((d[3] as i64) << 24)
+}
+
 pub fn get_debug_scopes<'b>(
     debug_sections: &'b HashMap<&str, &[u8]>,
-    sources: &Vec<String>,
+    sources: &mut Vec<String>,
 ) -> Vec<DebugInfoObj<'b>> {
     // see https://gist.github.com/yurydelendik/802f36983d50cedb05f984d784dc5159
     let ref debug_str = DebugStr::new(&debug_sections[".debug_str"], LittleEndian);
     let ref debug_abbrev = DebugAbbrev::new(&debug_sections[".debug_abbrev"], LittleEndian);
     let ref debug_info = DebugInfo::new(&debug_sections[".debug_info"], LittleEndian);
+    let ref debug_line = DebugLine::new(&debug_sections[".debug_line"], LittleEndian);
 
     let debug_ranges = DebugRanges::new(&debug_sections[".debug_ranges"], LittleEndian);
     let debug_rnglists = DebugRngLists::new(&[], LittleEndian);
@@ -60,30 +198,87 @@ pub fn get_debug_scopes<'b>(
     let mut iter = debug_info.units();
     let mut info = Vec::new();
     while let Some(unit) = iter.next().unwrap_or(None) {
+        let mut unit_infos = UnitInfos {
+            address_size: unit.address_size(),
+            base_address: 0,
+            comp_dir: None,
+            comp_name: None,
+            line_program: None,
+        };
         let abbrevs = unit.abbreviations(debug_abbrev).unwrap();
 
         let mut stack: Vec<DebugInfoObj> = Vec::new();
         stack.push(DebugInfoObj {
             tag: &"",
-            attrs: Vec::new(),
+            attrs: HashMap::new(),
             children: Vec::new(),
         });
         // Iterate over all of this compilation unit's entries.
         let mut entries = unit.entries(&abbrevs);
-        while let Some((depth_delta, entry)) = entries.next_dfs().expect("???") {
+        while let Some((depth_delta, entry)) = entries.next_dfs().expect("entry") {
+            if entry.tag() == gimli::DW_TAG_compile_unit || entry.tag() == gimli::DW_TAG_type_unit {
+                unit_infos.base_address =
+                    match entry.attr_value(gimli::DW_AT_low_pc).expect("low_pc") {
+                        Some(AttributeValue::Addr(address)) => address,
+                        _ => 0,
+                    };
+                unit_infos.comp_dir = entry
+                    .attr(gimli::DW_AT_comp_dir)
+                    .expect("comp_dir")
+                    .and_then(|attr| attr.string_value(debug_str));
+                unit_infos.comp_name = entry.attr(gimli::DW_AT_name).expect("name").and_then(
+                    |attr| {
+                        attr.string_value(debug_str)
+                    },
+                );
+                unit_infos.line_program =
+                    match entry.attr_value(gimli::DW_AT_stmt_list).expect("stmt_list") {
+                        Some(AttributeValue::DebugLineRef(offset)) => {
+                            debug_line
+                                .program(
+                                    offset,
+                                    unit_infos.address_size,
+                                    unit_infos.comp_dir.clone(),
+                                    unit_infos.comp_name.clone(),
+                                )
+                                .ok()
+                        }
+                        _ => None,
+                    }
+            }
+
             let tag_value = &entry.tag().static_string().unwrap()[ /*DW_TAG_*/ 7..];
-            let mut attrs_values = Vec::new();
+            let mut attrs_values = HashMap::new();
             let mut attrs = entry.attrs();
             while let Some(attr) = attrs.next().unwrap() {
                 let attr_name = &attr.name().static_string().unwrap()[ /*DW_AT_*/ 6 ..];
                 let attr_value = match attr.value() {
                     AttributeValue::Addr(u) => DebugAttrValue::I64(u as i64),
-                    AttributeValue::Udata(u) => DebugAttrValue::I64(u as i64),
+                    AttributeValue::Udata(u) => {
+                        if attr_name != "high_pc" {
+                            DebugAttrValue::I64(u as i64)
+                        } else {
+                            DebugAttrValue::I64(
+                                u as i64 +
+                                    (if let Some(DebugAttrValue::I64(low_pc)) =
+                                        attrs_values.get("low_pc")
+                                    {
+                                         *low_pc
+                                     } else {
+                                         0
+                                     }),
+                            )
+                        }
+                    }
                     AttributeValue::Data1(u) => DebugAttrValue::I64(u[0] as i64),
+                    AttributeValue::Data2(u) => DebugAttrValue::I64(decode_data2(&u.0)),
+                    AttributeValue::Data4(u) => DebugAttrValue::I64(decode_data4(&u.0)),
                     AttributeValue::Sdata(i) => DebugAttrValue::I64(i),
                     AttributeValue::DebugLineRef(o) => DebugAttrValue::I64(o.0 as i64),
                     AttributeValue::Flag(f) => DebugAttrValue::Bool(f),
-                    AttributeValue::FileIndex(_i) => DebugAttrValue::String("?? FileIndex"),
+                    AttributeValue::FileIndex(i) => DebugAttrValue::I64(
+                        get_source_id(sources, &unit_infos, i),
+                    ),
                     AttributeValue::DebugStrRef(r) => DebugAttrValue::String(
                         debug_str
                             .get_str(r)
@@ -131,12 +326,9 @@ pub fn get_debug_scopes<'b>(
                         // Types and stuff
                         DebugAttrValue::Ignored
                     }
-                    _ => {
-                        println!("{:?}", attr.value());
-                        DebugAttrValue::Unknown
-                    }
+                    _ => DebugAttrValue::Unknown,
                 };
-                attrs_values.push((attr_name, attr_value));
+                attrs_values.insert(attr_name, attr_value);
             }
             if depth_delta <= 0 && stack.len() > 1 {
                 for _ in 0..1 - depth_delta {
