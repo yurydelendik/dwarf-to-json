@@ -1,0 +1,24 @@
+{
+  "name": "dwarf-to-json",
+  "version": "0.0.1",
+  "description": "Extracting DWARF section from binary WebAssembly file and converting that to JSON",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yurydelendik/dwarf-to-json.git"
+  },
+  "keywords": [
+    "dwarf",
+    "json",
+    "converter"
+  ],
+  "author": "Mozilla Foundation",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/yurydelendik/dwarf-to-json/issues"
+  },
+  "homepage": "https://github.com/yurydelendik/dwarf-to-json#readme"
+}
