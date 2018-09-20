@@ -17,7 +17,7 @@
     }
 
     async function run(instance) {
-      const wasm = await (await fetch("../target/wasm32-unknown-unknown/debug/dwarf_to_json.wasm")).arrayBuffer();
+      const wasm = await (await fetch("../hey.wasm")).arrayBuffer();
       const output = convert_dwarf(wasm, instance);
       console.log(JSON.parse(output));
     }

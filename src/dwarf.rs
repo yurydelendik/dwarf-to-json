@@ -396,7 +396,7 @@ pub struct LocationInfo {
 
 pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> LocationInfo {
     let mut sources = Vec::new();
-    let mut locations = Vec::new();
+    let mut locations: Vec<LocationRecord> = Vec::new();
     let mut source_to_id_map: HashMap<u64, usize> = HashMap::new();
 
     let ref debug_str = DebugStr::new(&debug_sections[".debug_str"], LittleEndian);
@@ -458,20 +458,33 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> LocationInfo {
                 } else {
                     *source_to_id_map.get(&file_index).unwrap() as usize
                 };
-                let loc = LocationRecord {
+                let mut loc = LocationRecord {
                     address: pc,
                     source_id: source_id as u32,
                     line: line as u32,
                     column: column as u32,
                 };
-                locations.push(loc);
-                if row.end_sequence() {
+                let end_sequence = if row.end_sequence() {
+                    // end_sequence falls on the byte after function's end --
+                    // moving address one step back.
+                    loc.address -= 1;
+                    // Compacting duplicate records.
+                    if locations[locations.len() - 1].address < loc.address {
+                        locations.push(loc);
+                    }
+                    true
+                } else {
+                    locations.push(loc);
+                    false
+                };
+                if end_sequence {
                     // Heuristic to remove dead functions.
                     let block_end_loc = locations.len() - 1;
                     let fn_size = locations[block_end_loc].address -
                         locations[block_start_loc].address + 1;
                     let fn_size_field_len = ((fn_size + 1).next_power_of_two().trailing_zeros() +
                                                  6) / 7;
+                    // Remove function if it starts at its size field location.
                     if locations[block_start_loc].address <= fn_size_field_len as u64 {
                         locations.drain(block_start_loc..);
                     }
