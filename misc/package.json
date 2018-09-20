@@ -10,6 +10,9 @@
     "type": "git",
     "url": "git+https://github.com/yurydelendik/dwarf-to-json.git"
   },
+  "bin": {
+    "dwarf_to_js": "./cli.js"
+  },
   "keywords": [
     "dwarf",
     "json",
