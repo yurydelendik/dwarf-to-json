@@ -1,6 +1,6 @@
 {
   "name": "dwarf-to-json",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Extracting DWARF section from binary WebAssembly file and converting that to JSON",
   "main": "index.js",
   "scripts": {

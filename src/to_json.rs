@@ -17,6 +17,15 @@ use dwarf::{LocationInfo, DebugInfoObj, DebugAttrValue};
 use serde_json::{Value, Map, to_vec_pretty};
 use std::str;
 use vlq::encode;
+use std::fmt::Write as FmtWrite;
+
+fn convert_expr(a: &[u8]) -> Value {
+    let mut result = String::new();
+    for i in a {
+        write!(&mut result, "{:02X}", i).expect("success");
+    }
+    json!(result)
+}
 
 pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Value {
     let mut result = Vec::new();
@@ -35,7 +44,17 @@ pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Value {
                     }
                     json!(r)
                 }
-                DebugAttrValue::Expression => json!("<expr>"),
+                DebugAttrValue::LocationList(list) => {
+                    let mut r = Vec::new();
+                    for item in list {
+                        let mut dict = Map::new();
+                        dict.insert("range".to_string(), json!(vec![json!(item.0), json!(item.1)]));
+                        dict.insert("expr".to_string(), convert_expr(item.2));
+                        r.push(dict);
+                    }
+                    json!(r)
+                }
+                DebugAttrValue::Expression(expr) => convert_expr(expr),
                 DebugAttrValue::Ignored => json!("<ignored>"),
                 DebugAttrValue::Unknown => json!("???"),
             };

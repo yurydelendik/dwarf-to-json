@@ -33,7 +33,8 @@ pub enum DebugAttrValue<'a> {
     Bool(bool),
     String(&'a str),
     Ranges(Vec<(i64, i64)>),
-    Expression,
+    Expression(&'a [u8]),
+    LocationList(Vec<(i64, i64, &'a [u8])>),
     Ignored,
     Unknown,
 }
@@ -199,13 +200,19 @@ pub fn get_debug_scopes<'b>(
     let ref debug_info = DebugInfo::new(&debug_sections[".debug_info"], LittleEndian);
     let ref debug_line = DebugLine::new(&debug_sections[".debug_line"], LittleEndian);
 
-    let debug_ranges = DebugRanges::new(&debug_sections[".debug_ranges"], LittleEndian);
+    let debug_ranges = match debug_sections.get(".debug_ranges") {
+        Some(section) => DebugRanges::new(section, LittleEndian),
+        None => DebugRanges::new(&[], LittleEndian)
+    };
     let debug_rnglists = DebugRngLists::new(&[], LittleEndian);
     let rnglists = RangeLists::new(debug_ranges, debug_rnglists).expect("Should parse rnglists");
 
-    // let debug_loc = DebugLoc::new(&debug_sections[".debug_loc"], LittleEndian);
-    // let debug_loclists = DebugLocLists::new(&[], LittleEndian);
-    // let loclists = LocationLists::new(debug_loc, debug_loclists).expect("Should parse loclists");
+    let debug_loc = match debug_sections.get(".debug_loc") {
+        Some(section) => DebugLoc::new(section, LittleEndian),
+        None => DebugLoc::new(&[], LittleEndian)
+    };
+    let debug_loclists = DebugLocLists::new(&[], LittleEndian);
+    let loclists = LocationLists::new(debug_loc, debug_loclists).expect("Should parse loclists");
 
     let mut iter = debug_info.units();
     let mut info = Vec::new();
@@ -310,17 +317,18 @@ pub fn get_debug_scopes<'b>(
                         }
                         DebugAttrValue::Ranges(result)
                     }
-                    // AttributeValue::LocationListsRef(r) => {
-                    //     let low_pc = 0;
-                    //     let mut locs = loclists
-                    //       .locations(r, unit.version(), unit.address_size(), low_pc)
-                    //       .expect("Should parse locations OK");
-                    //     while let Some(loc) = locs.next().expect("Should parse next location") {
-                    //         assert!(loc.range.begin <= loc.range.end);
-                    //     }
-                    //     DebugAttrValue::Ignored
-                    // },
-                    AttributeValue::Exprloc(_expr) => DebugAttrValue::Expression,
+                    AttributeValue::LocationListsRef(r) => {
+                        let low_pc = 0;
+                        let mut locs = loclists
+                          .locations(r, unit.version(), unit.address_size(), low_pc)
+                          .expect("Should parse locations OK");
+                        let mut result = Vec::new();
+                        while let Some(loc) = locs.next().expect("Should parse next location") {
+                            result.push((loc.range.begin as i64, loc.range.end as i64, loc.data.0.slice()));
+                        }
+                        DebugAttrValue::LocationList(result)
+                    },
+                    AttributeValue::Exprloc(ref expr) => DebugAttrValue::Expression(&expr.0.slice()),
                     AttributeValue::Encoding(e) => enum_to_str(e.static_string()),
                     AttributeValue::DecimalSign(e) => enum_to_str(e.static_string()),
                     AttributeValue::Endianity(e) => enum_to_str(e.static_string()),
