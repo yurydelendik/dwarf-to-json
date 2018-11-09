@@ -13,9 +13,14 @@
  * limitations under the License.
  */
 
+use std::result;
 use std::str;
 
-fn read_u32_leb128(slice: &[u8]) -> (u32, usize) {
+pub struct WasmFormatError;
+
+pub type Result<T> = result::Result<T, WasmFormatError>;
+
+fn read_u32_leb128(slice: &[u8]) -> Result<(u32, usize)> {
     let mut result: u32 = 0;
     let mut shift = 0;
     let mut position = 0;
@@ -31,9 +36,10 @@ fn read_u32_leb128(slice: &[u8]) -> (u32, usize) {
     }
 
     // Do a single bounds check at the end instead of for every byte.
-    assert!(position <= slice.len());
-
-    (result, position)
+    if position > slice.len() {
+        return Err(WasmFormatError);
+    }
+    Ok((result, position))
 }
 
 pub struct WasmDecoder<'a> {
@@ -53,28 +59,23 @@ impl<'a> WasmDecoder<'a> {
         self.data.len() == 0
     }
 
-    pub fn byte(&mut self) -> u8 {
-        self.skip(1)[0]
-    }
-
-    pub fn u32(&mut self) -> u32 {
-        let (n, l1) = read_u32_leb128(self.data);
+    pub fn u32(&mut self) -> Result<u32> {
+        let (n, l1) = read_u32_leb128(self.data)?;
         self.data = &self.data[l1..];
-        return n;
+        Ok(n)
     }
 
-    pub fn skip(&mut self, amt: usize) -> &'a [u8] {
+    pub fn skip(&mut self, amt: usize) -> Result<&'a [u8]> {
+        if amt > self.data.len() {
+            return Err(WasmFormatError);
+        }
         let (data, rest) = self.data.split_at(amt);
         self.data = rest;
-        data
+        Ok(data)
     }
 
-    pub fn str(&mut self) -> &'a str {
-        let len = self.u32();
-        str::from_utf8(self.skip(len as usize)).unwrap()
-    }
-
-    pub fn bool(&mut self) -> bool {
-        self.byte() == 1
+    pub fn str(&mut self) -> Result<&'a str> {
+        let len = self.u32()?;
+        str::from_utf8(self.skip(len as usize)?).map_err(|_| WasmFormatError)
     }
 }

@@ -14,18 +14,30 @@
  */
 
 use std::collections::HashMap;
+use std::result::Result;
 
 use gimli;
 
-use gimli::{DebugAbbrev, DebugInfo, DebugLine, DebugStr, DebugRanges, DebugRngLists, DebugLoc,
-            DebugLocLists, RangeLists, LocationLists, LittleEndian, AttributeValue};
+use gimli::{
+    AttributeValue, DebugAbbrev, DebugInfo, DebugLine, DebugLoc, DebugLocLists, DebugRanges,
+    DebugRngLists, DebugStr, LittleEndian, LocationLists, RangeLists,
+};
 
 trait Reader: gimli::Reader<Offset = usize> {}
 
-impl<'input, Endian> Reader for gimli::EndianSlice<'input, Endian>
-where
-    Endian: gimli::Endianity,
-{
+impl<'input, Endian> Reader for gimli::EndianSlice<'input, Endian> where Endian: gimli::Endianity {}
+
+#[derive(Debug)]
+pub enum Error {
+    GimliError(gimli::Error),
+    MissingDwarfEntry,
+    DataFormat,
+}
+
+impl From<gimli::Error> for Error {
+    fn from(err: gimli::Error) -> Self {
+        Error::GimliError(err)
+    }
 }
 
 pub enum DebugAttrValue<'a> {
@@ -70,8 +82,10 @@ fn remove_dead_functions(items: &mut Vec<DebugInfoObj>) {
                 let low_pc = item.attrs.get("low_pc");
                 if low_pc.is_some() {
                     let high_pc = item.attrs.get("high_pc");
-                    if let (DebugAttrValue::I64(low_pc_val), DebugAttrValue::I64(high_pc_val)) =
-                        (low_pc.unwrap(), high_pc.unwrap())
+                    if let (
+                        Some(DebugAttrValue::I64(low_pc_val)),
+                        Some(DebugAttrValue::I64(high_pc_val)),
+                    ) = (low_pc, high_pc)
                     {
                         Some((*low_pc_val, *high_pc_val))
                     } else {
@@ -126,11 +140,11 @@ fn remove_dead_functions(items: &mut Vec<DebugInfoObj>) {
     }
 }
 
-fn enum_to_str(s: Option<&'static str>) -> DebugAttrValue {
-    let s1 = s.unwrap();
-    let (_dw, s2) = s1.split_at(s1.find('_').unwrap() + 1);
-    let (_dw, s3) = s2.split_at(s2.find('_').unwrap() + 1);
-    DebugAttrValue::String(s3)
+fn enum_to_str(s: Option<&'static str>) -> Result<DebugAttrValue, Error> {
+    let s1 = s.ok_or(Error::DataFormat)?;
+    let (_dw, s2) = s1.split_at(s1.find('_').ok_or(Error::DataFormat)? + 1);
+    let (_dw, s3) = s2.split_at(s2.find('_').ok_or(Error::DataFormat)? + 1);
+    Ok(DebugAttrValue::String(s3))
 }
 
 struct UnitInfos<R: Reader> {
@@ -145,26 +159,25 @@ fn get_source_id<R: Reader>(
     sources: &mut Vec<String>,
     unit: &UnitInfos<R>,
     file_index: u64,
-) -> i64 {
-    const INVALID_INDEX: i64 = -1;
+) -> Result<Option<i64>, Error> {
     if file_index == 0 {
-        return INVALID_INDEX;
+        return Ok(None);
     }
     let header = match unit.line_program {
         Some(ref program) => program.header(),
-        None => return INVALID_INDEX,
+        None => return Err(Error::MissingDwarfEntry),
     };
     let file = match header.file(file_index) {
         Some(header) => header,
-        None => return INVALID_INDEX,
+        None => return Err(Error::MissingDwarfEntry),
     };
 
-    let mut file_name: String = String::from(file.path_name().to_string_lossy().unwrap());
+    let mut file_name: String = String::from(file.path_name().to_string_lossy()?);
     if let Some(directory) = file.directory(header) {
-        let directory = directory.to_string_lossy().unwrap();
+        let directory = directory.to_string_lossy()?;
         let prefix = if !directory.starts_with('/') {
             if let Some(ref comp_dir) = unit.comp_dir {
-                format!("{}/", comp_dir.to_string_lossy().unwrap())
+                format!("{}/", comp_dir.to_string_lossy()?)
             } else {
                 String::from("")
             }
@@ -173,13 +186,14 @@ fn get_source_id<R: Reader>(
         };
         file_name = format!("{}{}/{}", prefix, directory, &file_name);
     }
-    (if let Some(position) = sources.iter().position(|&ref x| *x == file_name) {
-         position
-     } else {
-         let id = sources.len();
-         sources.push(file_name);
-         id
-     }) as i64
+    let id = (if let Some(position) = sources.iter().position(|&ref x| *x == file_name) {
+        position
+    } else {
+        let id = sources.len();
+        sources.push(file_name);
+        id
+    }) as i64;
+    Ok(Some(id))
 }
 
 fn decode_data2(d: &[u8]) -> i64 {
@@ -193,7 +207,7 @@ fn decode_data4(d: &[u8]) -> i64 {
 pub fn get_debug_scopes<'b>(
     debug_sections: &'b HashMap<&str, &[u8]>,
     sources: &mut Vec<String>,
-) -> Vec<DebugInfoObj<'b>> {
+) -> Result<Vec<DebugInfoObj<'b>>, Error> {
     // see https://gist.github.com/yurydelendik/802f36983d50cedb05f984d784dc5159
     let ref debug_str = DebugStr::new(&debug_sections[".debug_str"], LittleEndian);
     let ref debug_abbrev = DebugAbbrev::new(&debug_sections[".debug_abbrev"], LittleEndian);
@@ -202,17 +216,17 @@ pub fn get_debug_scopes<'b>(
 
     let debug_ranges = match debug_sections.get(".debug_ranges") {
         Some(section) => DebugRanges::new(section, LittleEndian),
-        None => DebugRanges::new(&[], LittleEndian)
+        None => DebugRanges::new(&[], LittleEndian),
     };
     let debug_rnglists = DebugRngLists::new(&[], LittleEndian);
-    let rnglists = RangeLists::new(debug_ranges, debug_rnglists).expect("Should parse rnglists");
+    let rnglists = RangeLists::new(debug_ranges, debug_rnglists)?;
 
     let debug_loc = match debug_sections.get(".debug_loc") {
         Some(section) => DebugLoc::new(section, LittleEndian),
-        None => DebugLoc::new(&[], LittleEndian)
+        None => DebugLoc::new(&[], LittleEndian),
     };
     let debug_loclists = DebugLocLists::new(&[], LittleEndian);
-    let loclists = LocationLists::new(debug_loc, debug_loclists).expect("Should parse loclists");
+    let loclists = LocationLists::new(debug_loc, debug_loclists)?;
 
     let mut iter = debug_info.units();
     let mut info = Vec::new();
@@ -224,7 +238,7 @@ pub fn get_debug_scopes<'b>(
             comp_name: None,
             line_program: None,
         };
-        let abbrevs = unit.abbreviations(debug_abbrev).unwrap();
+        let abbrevs = unit.abbreviations(debug_abbrev)?;
 
         let mut stack: Vec<DebugInfoObj> = Vec::new();
         stack.push(DebugInfoObj {
@@ -234,42 +248,34 @@ pub fn get_debug_scopes<'b>(
         });
         // Iterate over all of this compilation unit's entries.
         let mut entries = unit.entries(&abbrevs);
-        while let Some((depth_delta, entry)) = entries.next_dfs().expect("entry") {
+        while let Some((depth_delta, entry)) = entries.next_dfs()? {
             if entry.tag() == gimli::DW_TAG_compile_unit || entry.tag() == gimli::DW_TAG_type_unit {
-                unit_infos.base_address =
-                    match entry.attr_value(gimli::DW_AT_low_pc).expect("low_pc") {
-                        Some(AttributeValue::Addr(address)) => address,
-                        _ => 0,
-                    };
+                unit_infos.base_address = match entry.attr_value(gimli::DW_AT_low_pc)? {
+                    Some(AttributeValue::Addr(address)) => address,
+                    _ => 0,
+                };
                 unit_infos.comp_dir = entry
-                    .attr(gimli::DW_AT_comp_dir)
-                    .expect("comp_dir")
+                    .attr(gimli::DW_AT_comp_dir)?
                     .and_then(|attr| attr.string_value(debug_str));
-                unit_infos.comp_name = entry.attr(gimli::DW_AT_name).expect("name").and_then(
-                    |attr| {
-                        attr.string_value(debug_str)
-                    },
-                );
-                unit_infos.line_program =
-                    match entry.attr_value(gimli::DW_AT_stmt_list).expect("stmt_list") {
-                        Some(AttributeValue::DebugLineRef(offset)) => {
-                            debug_line
-                                .program(
-                                    offset,
-                                    unit_infos.address_size,
-                                    unit_infos.comp_dir.clone(),
-                                    unit_infos.comp_name.clone(),
-                                )
-                                .ok()
-                        }
-                        _ => None,
-                    }
+                unit_infos.comp_name = entry
+                    .attr(gimli::DW_AT_name)?
+                    .and_then(|attr| attr.string_value(debug_str));
+                unit_infos.line_program = match entry.attr_value(gimli::DW_AT_stmt_list)? {
+                    Some(AttributeValue::DebugLineRef(offset)) => debug_line
+                        .program(
+                            offset,
+                            unit_infos.address_size,
+                            unit_infos.comp_dir.clone(),
+                            unit_infos.comp_name.clone(),
+                        ).ok(),
+                    _ => None,
+                }
             }
 
             let tag_value = &entry.tag().static_string().unwrap()[ /*DW_TAG_*/ 7..];
             let mut attrs_values = HashMap::new();
             let mut attrs = entry.attrs();
-            while let Some(attr) = attrs.next().unwrap() {
+            while let Some(attr) = attrs.next()? {
                 let attr_name = &attr.name().static_string().unwrap()[ /*DW_AT_*/ 6 ..];
                 let attr_value = match attr.value() {
                     AttributeValue::Addr(u) => DebugAttrValue::I64(u as i64),
@@ -278,14 +284,14 @@ pub fn get_debug_scopes<'b>(
                             DebugAttrValue::I64(u as i64)
                         } else {
                             DebugAttrValue::I64(
-                                u as i64 +
-                                    (if let Some(DebugAttrValue::I64(low_pc)) =
+                                u as i64
+                                    + (if let Some(DebugAttrValue::I64(low_pc)) =
                                         attrs_values.get("low_pc")
                                     {
-                                         *low_pc
-                                     } else {
-                                         0
-                                     }),
+                                        *low_pc
+                                    } else {
+                                        0
+                                    }),
                             )
                         }
                     }
@@ -296,22 +302,17 @@ pub fn get_debug_scopes<'b>(
                     AttributeValue::DebugLineRef(o) => DebugAttrValue::I64(o.0 as i64),
                     AttributeValue::Flag(f) => DebugAttrValue::Bool(f),
                     AttributeValue::FileIndex(i) => DebugAttrValue::I64(
-                        get_source_id(sources, &unit_infos, i),
+                        get_source_id(sources, &unit_infos, i)?.unwrap_or(-1), // FIXME do we need -1?
                     ),
-                    AttributeValue::DebugStrRef(str_offset) => DebugAttrValue::String(
-                        debug_str
-                            .get_str(str_offset)
-                            .expect("string")
-                            .to_string()
-                            .expect("???"),
-                    ),
+                    AttributeValue::DebugStrRef(str_offset) => {
+                        DebugAttrValue::String(debug_str.get_str(str_offset)?.to_string()?)
+                    }
                     AttributeValue::RangeListsRef(r) => {
                         let low_pc = 0;
-                        let mut ranges = rnglists
-                            .ranges(r, unit.version(), unit.address_size(), low_pc)
-                            .expect("Should parse ranges OK");
+                        let mut ranges =
+                            rnglists.ranges(r, unit.version(), unit.address_size(), low_pc)?;
                         let mut result = Vec::new();
-                        while let Some(range) = ranges.next().expect("Should parse next range") {
+                        while let Some(range) = ranges.next()? {
                             assert!(range.begin <= range.end);
                             result.push((range.begin as i64, range.end as i64));
                         }
@@ -319,41 +320,41 @@ pub fn get_debug_scopes<'b>(
                     }
                     AttributeValue::LocationListsRef(r) => {
                         let low_pc = 0;
-                        let mut locs = loclists
-                          .locations(r, unit.version(), unit.address_size(), low_pc)
-                          .expect("Should parse locations OK");
+                        let mut locs =
+                            loclists.locations(r, unit.version(), unit.address_size(), low_pc)?;
                         let mut result = Vec::new();
-                        while let Some(loc) = locs.next().expect("Should parse next location") {
-                            result.push((loc.range.begin as i64, loc.range.end as i64, loc.data.0.slice()));
+                        while let Some(loc) = locs.next()? {
+                            result.push((
+                                loc.range.begin as i64,
+                                loc.range.end as i64,
+                                loc.data.0.slice(),
+                            ));
                         }
                         DebugAttrValue::LocationList(result)
-                    },
-                    AttributeValue::Exprloc(ref expr) => DebugAttrValue::Expression(&expr.0.slice()),
-                    AttributeValue::Encoding(e) => enum_to_str(e.static_string()),
-                    AttributeValue::DecimalSign(e) => enum_to_str(e.static_string()),
-                    AttributeValue::Endianity(e) => enum_to_str(e.static_string()),
-                    AttributeValue::Accessibility(e) => enum_to_str(e.static_string()),
-                    AttributeValue::Visibility(e) => enum_to_str(e.static_string()),
-                    AttributeValue::Virtuality(e) => enum_to_str(e.static_string()),
-                    AttributeValue::Language(e) => enum_to_str(e.static_string()),
-                    AttributeValue::AddressClass(e) => enum_to_str(e.static_string()),
-                    AttributeValue::IdentifierCase(e) => enum_to_str(e.static_string()),
-                    AttributeValue::CallingConvention(e) => enum_to_str(e.static_string()),
-                    AttributeValue::Inline(e) => enum_to_str(e.static_string()),
-                    AttributeValue::Ordering(e) => enum_to_str(e.static_string()),
+                    }
+                    AttributeValue::Exprloc(ref expr) => {
+                        DebugAttrValue::Expression(&expr.0.slice())
+                    }
+                    AttributeValue::Encoding(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::DecimalSign(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::Endianity(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::Accessibility(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::Visibility(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::Virtuality(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::Language(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::AddressClass(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::IdentifierCase(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::CallingConvention(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::Inline(e) => enum_to_str(e.static_string())?,
+                    AttributeValue::Ordering(e) => enum_to_str(e.static_string())?,
                     AttributeValue::UnitRef(offset) => {
-                        let mut unit_entries =
-                            unit.entries_at_offset(&abbrevs, offset).expect("unitref");
-                        unit_entries.next_entry().unwrap();
-                        let entry = unit_entries.current().expect("unitentry");
+                        let mut unit_entries = unit.entries_at_offset(&abbrevs, offset)?;
+                        unit_entries.next_entry()?;
+                        let entry = unit_entries.current().ok_or(Error::MissingDwarfEntry)?;
                         let name = if let Some(AttributeValue::DebugStrRef(str_offset)) =
-                            entry.attr_value(gimli::DW_AT_linkage_name).expect("unitref attr")
+                            entry.attr_value(gimli::DW_AT_linkage_name)?
                         {
-                            debug_str
-                                .get_str(str_offset)
-                                .expect("string")
-                                .to_string()
-                                .expect("???")
+                            debug_str.get_str(str_offset)?.to_string()?
                         } else {
                             ""
                         };
@@ -387,7 +388,7 @@ pub fn get_debug_scopes<'b>(
         info.append(&mut stack.pop().unwrap().children);
     }
     remove_dead_functions(&mut info);
-    info
+    Ok(info)
 }
 
 pub struct LocationRecord {
@@ -402,7 +403,7 @@ pub struct LocationInfo {
     pub locations: Vec<LocationRecord>,
 }
 
-pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> LocationInfo {
+pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> Result<LocationInfo, Error> {
     let mut sources = Vec::new();
     let mut locations: Vec<LocationRecord> = Vec::new();
     let mut source_to_id_map: HashMap<u64, usize> = HashMap::new();
@@ -414,25 +415,25 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> LocationInfo {
 
     let mut iter = debug_info.units();
     while let Some(unit) = iter.next().unwrap_or(None) {
-        let abbrevs = unit.abbreviations(debug_abbrev).unwrap();
+        let abbrevs = unit.abbreviations(debug_abbrev)?;
         let mut cursor = unit.entries(&abbrevs);
-        cursor.next_dfs().expect("???");
-        let root = cursor.current().expect("missing die");
-        let offset = match root.attr_value(gimli::DW_AT_stmt_list).unwrap() {
+        cursor.next_dfs()?;
+        let root = cursor.current().ok_or(Error::MissingDwarfEntry)?;
+        let offset = match root.attr_value(gimli::DW_AT_stmt_list)? {
             Some(gimli::AttributeValue::DebugLineRef(offset)) => offset,
             _ => continue,
         };
-        let comp_dir = root.attr(gimli::DW_AT_comp_dir).unwrap().and_then(|attr| {
-            attr.string_value(debug_str)
-        });
-        let comp_name = root.attr(gimli::DW_AT_name).unwrap().and_then(|attr| {
-            attr.string_value(debug_str)
-        });
+        let comp_dir = root
+            .attr(gimli::DW_AT_comp_dir)?
+            .and_then(|attr| attr.string_value(debug_str));
+        let comp_name = root
+            .attr(gimli::DW_AT_name)?
+            .and_then(|attr| attr.string_value(debug_str));
         let program = debug_line.program(offset, unit.address_size(), comp_dir, comp_name);
         let mut block_start_loc = locations.len();
         if let Ok(program) = program {
             let mut rows = program.rows();
-            while let Some((header, row)) = rows.next_row().unwrap() {
+            while let Some((header, row)) = rows.next_row()? {
                 let pc = row.address();
                 let line = row.line().unwrap_or(0);
                 let column = match row.column() {
@@ -464,7 +465,7 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> LocationInfo {
                             index
                         })
                 } else {
-                    *source_to_id_map.get(&file_index).unwrap() as usize
+                    *source_to_id_map.get(&file_index).ok_or(Error::DataFormat)? as usize
                 };
                 let mut loc = LocationRecord {
                     address: pc,
@@ -488,10 +489,10 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> LocationInfo {
                 if end_sequence {
                     // Heuristic to remove dead functions.
                     let block_end_loc = locations.len() - 1;
-                    let fn_size = locations[block_end_loc].address -
-                        locations[block_start_loc].address + 1;
-                    let fn_size_field_len = ((fn_size + 1).next_power_of_two().trailing_zeros() +
-                                                 6) / 7;
+                    let fn_size =
+                        locations[block_end_loc].address - locations[block_start_loc].address + 1;
+                    let fn_size_field_len =
+                        ((fn_size + 1).next_power_of_two().trailing_zeros() + 6) / 7;
                     // Remove function if it starts at its size field location.
                     if locations[block_start_loc].address <= fn_size_field_len as u64 {
                         locations.drain(block_start_loc..);
@@ -507,5 +508,5 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> LocationInfo {
 
     locations.sort_by(|a, b| a.address.cmp(&b.address));
 
-    LocationInfo { sources, locations }
+    Ok(LocationInfo { sources, locations })
 }

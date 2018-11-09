@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-use std::slice;
 use std::mem;
+use std::slice;
 
 use convert::convert;
 
@@ -24,9 +24,9 @@ extern crate serde_json;
 extern crate vlq;
 
 mod convert;
-mod wasm;
 mod dwarf;
 mod to_json;
+mod wasm;
 
 #[no_mangle]
 pub extern "C" fn alloc_mem(size: usize) -> *mut u8 {
@@ -55,13 +55,21 @@ pub extern "C" fn convert_dwarf(
     output: *mut *const u8,
     output_len: *mut usize,
     enabled_x_scopes: bool,
-) {
+) -> bool {
     let wasm_bytes = unsafe { slice::from_raw_parts(wasm, wasm_len) };
-    let json = convert(&wasm_bytes, enabled_x_scopes);
-    unsafe {
-        *output = alloc_mem(json.len()) as *const u8;
-        *output_len = json.len();
-        slice::from_raw_parts_mut(*output as *mut u8, *output_len)
-            .clone_from_slice(json.as_slice());
-    };
+    match convert(&wasm_bytes, enabled_x_scopes) {
+        Ok(json) => unsafe {
+            *output = alloc_mem(json.len()) as *const u8;
+            *output_len = json.len();
+            slice::from_raw_parts_mut(*output as *mut u8, *output_len)
+                .clone_from_slice(json.as_slice());
+            true
+        },
+        Err(_) => {
+            unsafe {
+                *output_len = 0;
+            }
+            false
+        }
+    }
 }

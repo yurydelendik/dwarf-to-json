@@ -24,15 +24,15 @@ extern crate serde_json;
 extern crate vlq;
 
 mod convert;
-mod wasm;
 mod dwarf;
 mod to_json;
+mod wasm;
 
 const INPUT_FILE: &str = "/Users/yury/Work/old-man-sandbox/rust-wasm-hey/hey.dbg.wasm";
 const OUTPUT_FILE: &str = "./test.json";
 
 fn main() {
     let wasm = fs::read(Path::new(INPUT_FILE)).expect("failed to read wasm input");
-    let json = convert(&wasm, true);
+    let json = convert(&wasm, true).expect("json");
     fs::write(Path::new(OUTPUT_FILE), &json).expect("failed to write JSON");
 }

@@ -13,21 +13,22 @@
  * limitations under the License.
  */
 
-use dwarf::{LocationInfo, DebugInfoObj, DebugAttrValue};
-use serde_json::{Value, Map, to_vec_pretty};
+use dwarf::{DebugAttrValue, DebugInfoObj, LocationInfo};
+use serde_json::{to_vec_pretty, Map, Value};
+use std::fmt::Error;
+use std::fmt::Write as FmtWrite;
 use std::str;
 use vlq::encode;
-use std::fmt::Write as FmtWrite;
 
-fn convert_expr(a: &[u8]) -> Value {
+fn convert_expr(a: &[u8]) -> Result<Value, Error> {
     let mut result = String::new();
     for i in a {
-        write!(&mut result, "{:02X}", i).expect("success");
+        write!(&mut result, "{:02X}", i)?;
     }
-    json!(result)
+    Ok(json!(result))
 }
 
-pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Value {
+pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Result<Value, Error> {
     let mut result = Vec::new();
     for entry in infos {
         let mut dict = Map::new();
@@ -48,31 +49,34 @@ pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Value {
                     let mut r = Vec::new();
                     for item in list {
                         let mut dict = Map::new();
-                        dict.insert("range".to_string(), json!(vec![json!(item.0), json!(item.1)]));
-                        dict.insert("expr".to_string(), convert_expr(item.2));
+                        dict.insert(
+                            "range".to_string(),
+                            json!(vec![json!(item.0), json!(item.1)]),
+                        );
+                        dict.insert("expr".to_string(), convert_expr(item.2)?);
                         r.push(dict);
                     }
                     json!(r)
                 }
-                DebugAttrValue::Expression(expr) => convert_expr(expr),
+                DebugAttrValue::Expression(expr) => convert_expr(expr)?,
                 DebugAttrValue::Ignored => json!("<ignored>"),
                 DebugAttrValue::Unknown => json!("???"),
             };
             dict.insert(attr_name.to_string(), value);
         }
         if entry.children.len() > 0 {
-            dict.insert("children".to_string(), convert_scopes(&entry.children));
+            dict.insert("children".to_string(), convert_scopes(&entry.children)?);
         }
         result.push(json!(dict));
     }
-    json!(result)
+    Ok(json!(result))
 }
 
 pub fn convert_debug_info_to_json(
     di: &LocationInfo,
     infos: Option<Vec<DebugInfoObj>>,
     code_section_offset: i64,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, Error> {
     let mut buffer = Vec::new();
     let mut last_address = 0;
     let mut last_source_id = 0;
@@ -113,12 +117,12 @@ pub fn convert_debug_info_to_json(
     root.insert("mappings".to_string(), json!(mappings));
     if infos.is_some() {
         let mut x_scopes = Map::new();
-        x_scopes.insert("debug_info".to_string(), convert_scopes(&infos.unwrap()));
+        x_scopes.insert("debug_info".to_string(), convert_scopes(&infos.unwrap())?);
         x_scopes.insert(
             "code_section_offset".to_string(),
             json!(code_section_offset),
         );
         root.insert("x-scopes".to_string(), json!(x_scopes));
     }
-    to_vec_pretty(&json!(root)).expect("???")
+    to_vec_pretty(&json!(root)).map_err(|_| Error)
 }
