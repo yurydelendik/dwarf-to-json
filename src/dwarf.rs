@@ -442,7 +442,7 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> Result<LocationIn
                 };
                 let file_index = row.file_index();
                 let source_id = if !source_to_id_map.contains_key(&file_index) {
-                    let file_path: String = if let Some(file) = row.file(header) {
+                    let mut file_path: String = if let Some(file) = row.file(header) {
                         if let Some(directory) = file.directory(header) {
                             format!(
                                 "{}/{}",
@@ -455,6 +455,9 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> Result<LocationIn
                     } else {
                         String::from("<unknown>")
                     };
+                    if !file_path.starts_with("/") && comp_dir.is_some() {
+                        file_path = format!("{}/{}", comp_dir.unwrap().to_string_lossy(), file_path);
+                    }
                     sources
                         .iter()
                         .position(|&ref p| *p == file_path)
