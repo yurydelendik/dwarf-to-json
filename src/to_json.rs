@@ -59,6 +59,15 @@ pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Result<Value, Error> {
                     json!(r)
                 }
                 DebugAttrValue::Expression(expr) => convert_expr(expr)?,
+                DebugAttrValue::UID(uid) => json!(uid),
+                DebugAttrValue::UIDRef(uid, name) => {
+                    let mut dict = Map::new();
+                    dict.insert("uid".to_string(), json!(uid));
+                    if let Some(s) = name {
+                        dict.insert("name".to_string(), json!(s));
+                    }
+                    json!(dict)
+                }
                 DebugAttrValue::Ignored => json!("<ignored>"),
                 DebugAttrValue::Unknown => json!("???"),
             };

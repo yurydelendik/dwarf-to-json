@@ -20,7 +20,7 @@ use gimli;
 
 use gimli::{
     AttributeValue, DebugAbbrev, DebugInfo, DebugLine, DebugLoc, DebugLocLists, DebugRanges,
-    DebugRngLists, DebugStr, LittleEndian, LocationLists, RangeLists,
+    DebugRngLists, DebugStr, LittleEndian, LocationLists, RangeLists
 };
 
 trait Reader: gimli::Reader<Offset = usize> {}
@@ -47,6 +47,8 @@ pub enum DebugAttrValue<'a> {
     Ranges(Vec<(i64, i64)>),
     Expression(&'a [u8]),
     LocationList(Vec<(i64, i64, &'a [u8])>),
+    UID(usize),
+    UIDRef(usize, Option<&'a str>),
     Ignored,
     Unknown,
 }
@@ -272,8 +274,10 @@ pub fn get_debug_scopes<'b>(
                 }
             }
 
-            let tag_value = &entry.tag().static_string().unwrap()[ /*DW_TAG_*/ 7..];
             let mut attrs_values = HashMap::new();
+            attrs_values.insert("uid", DebugAttrValue::UID(entry.offset().0));
+
+            let tag_value = &entry.tag().static_string().unwrap()[ /*DW_TAG_*/ 7..];
             let mut attrs = entry.attrs();
             while let Some(attr) = attrs.next()? {
                 let attr_name = &attr.name().static_string().unwrap()[ /*DW_AT_*/ 6 ..];
@@ -354,11 +358,15 @@ pub fn get_debug_scopes<'b>(
                         let name = if let Some(AttributeValue::DebugStrRef(str_offset)) =
                             entry.attr_value(gimli::DW_AT_linkage_name)?
                         {
-                            debug_str.get_str(str_offset)?.to_string()?
+                            Some(debug_str.get_str(str_offset)?.to_string()?)
+                        } else if let Some(AttributeValue::DebugStrRef(str_offset)) =
+                            entry.attr_value(gimli::DW_AT_name)?
+                        {
+                            Some(debug_str.get_str(str_offset)?.to_string()?)
                         } else {
-                            ""
+                            None
                         };
-                        DebugAttrValue::String(name)
+                        DebugAttrValue::UIDRef(offset.0, name)
                     }
                     AttributeValue::DebugInfoRef(_) => {
                         // Types and stuff

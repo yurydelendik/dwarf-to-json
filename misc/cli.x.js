@@ -35,7 +35,7 @@ async function convertDwarfToJSON(wasm, enableXScopes = false) {
 }
 
 if (process.argv.length <= 2) {
-    console.error("USAGE: dwarf_to_json <input-wasm> <output-map>");
+    console.error("USAGE: dwarf_to_json_x <input-wasm> <output-map>");
     process.exit(1);
 }
 
@@ -43,6 +43,6 @@ const input = process.argv[2];
 const output = process.argv[3];
 
 const wasm = fs.readFileSync(input);
-convertDwarfToJSON(wasm, false).then(json => {
+convertDwarfToJSON(wasm, true).then(json => {
     fs.writeFileSync(output, json);
 });

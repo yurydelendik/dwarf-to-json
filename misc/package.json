@@ -1,6 +1,6 @@
 {
   "name": "dwarf-to-json",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Extracting DWARF section from binary WebAssembly file and converting that to JSON",
   "main": "index.js",
   "scripts": {
@@ -11,7 +11,8 @@
     "url": "git+https://github.com/yurydelendik/dwarf-to-json.git"
   },
   "bin": {
-    "dwarf_to_js": "./cli.js"
+    "dwarf_to_js": "./cli.js",
+    "dwarf_to_js_x": "./cli.x.js"
   },
   "keywords": [
     "dwarf",
