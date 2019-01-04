@@ -1,6 +1,6 @@
 TARGET_WASM_FILE = ./target/wasm32-unknown-unknown/release/dwarf_to_json.wasm
 SOURCE_FILES = Cargo.toml $(wildcard src/*.rs)
-OTHER_FILES_TO_PACK = misc/package.json misc/index.js misc/cli.js
+OTHER_FILES_TO_PACK = misc/package.json misc/index.js misc/cli.js misc/cli.x.js
 default: build
 
 build: $(TARGET_WASM_FILE)
