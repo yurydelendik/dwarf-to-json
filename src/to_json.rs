@@ -89,27 +89,30 @@ pub fn convert_debug_info_to_json(
     let mut buffer = Vec::new();
     let mut last_address = 0;
     let mut last_source_id = 0;
-    let mut last_line = 1;
-    let mut last_column = 1;
+    let mut last_line = 0;
+    let mut last_column = 0;
     for loc in di.locations.iter() {
         if loc.line == 0 {
             continue;
         }
-        let address_delta = loc.address as i64 + code_section_offset - last_address;
+        let address = loc.address as i64;
+        let address_delta = address + code_section_offset - last_address;
         encode(address_delta, &mut buffer).unwrap();
-        let source_id_delta = loc.source_id as i64 - last_source_id;
+        let source_id = loc.source_id as i64;
+        let source_id_delta = source_id - last_source_id;
         encode(source_id_delta, &mut buffer).unwrap();
-        let line_delta = loc.line as i64 - last_line;
+        let line = loc.line as i64 - 1;
+        let line_delta = line - last_line;
         encode(line_delta, &mut buffer).unwrap();
-        let column = if loc.column == 0 { 1 } else { loc.column } as i64;
+        let column = if loc.column == 0 { 0 } else { loc.column - 1 } as i64;
         let column_delta = column - last_column;
         encode(column_delta, &mut buffer).unwrap();
         buffer.push(b',');
 
-        last_address = loc.address as i64 + code_section_offset;
-        last_source_id = loc.source_id as i64;
-        last_line = loc.line as i64;
-        last_column = loc.column as i64;
+        last_address = address;
+        last_source_id = source_id;
+        last_line = line;
+        last_column = column;
     }
 
     if di.locations.len() > 0 {
