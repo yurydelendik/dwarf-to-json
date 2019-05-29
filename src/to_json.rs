@@ -95,8 +95,8 @@ pub fn convert_debug_info_to_json(
         if loc.line == 0 {
             continue;
         }
-        let address = loc.address as i64;
-        let address_delta = address + code_section_offset - last_address;
+        let address = loc.address as i64 + code_section_offset;
+        let address_delta = address - last_address;
         encode(address_delta, &mut buffer).unwrap();
         let source_id = loc.source_id as i64;
         let source_id_delta = source_id - last_source_id;

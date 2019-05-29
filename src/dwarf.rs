@@ -78,7 +78,7 @@ fn is_inlined_subprogram(item: &DebugInfoObj) -> bool {
 
 fn remove_dead_functions(items: &mut Vec<DebugInfoObj>) {
     let mut dead = Vec::new();
-    for (i, mut item) in items.iter_mut().enumerate() {
+    for (i, item) in items.iter_mut().enumerate() {
         if is_subprogram(&item) {
             let low_and_high_pc = {
                 let low_pc = item.attrs.get("low_pc");

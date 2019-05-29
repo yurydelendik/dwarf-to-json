@@ -1,6 +1,6 @@
 [package]
 name = "dwarf-to-json"
-version = "0.1.9"
+version = "0.1.10"
 authors = ["Yury Delendik <ydelendik@mozilla.com>"]
 
 [dependencies]
