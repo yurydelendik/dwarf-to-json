@@ -16,7 +16,7 @@
 use std::mem;
 use std::slice;
 
-use convert::convert;
+use crate::convert::convert;
 
 extern crate gimli;
 #[macro_use]

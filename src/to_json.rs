@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-use dwarf::{DebugAttrValue, DebugInfoObj, LocationInfo};
+use crate::dwarf::{DebugAttrValue, DebugInfoObj, LocationInfo};
 use serde_json::{to_vec_pretty, Map, Value};
 use std::fmt::Error;
 use std::fmt::Write as FmtWrite;
