@@ -7,6 +7,7 @@ authors = ["Yury Delendik <ydelendik@mozilla.com>"]
 vlq = "0.5.1"
 gimli = "0.16.0"
 serde_json = "1.0.26"
+clap = "2.33.0"
 
 [lib]
 crate-type = ["cdylib"]
