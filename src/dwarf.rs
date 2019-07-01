@@ -31,6 +31,7 @@ impl<'input, Endian> Reader for gimli::EndianSlice<'input, Endian> where Endian:
 pub enum Error {
     GimliError(gimli::Error),
     MissingDwarfEntry,
+    MissingSection,
     DataFormat,
 }
 
@@ -416,10 +417,10 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> Result<LocationIn
     let mut locations: Vec<LocationRecord> = Vec::new();
     let mut source_to_id_map: HashMap<u64, usize> = HashMap::new();
 
-    let ref debug_str = DebugStr::new(&debug_sections[".debug_str"], LittleEndian);
-    let ref debug_abbrev = DebugAbbrev::new(&debug_sections[".debug_abbrev"], LittleEndian);
-    let ref debug_info = DebugInfo::new(&debug_sections[".debug_info"], LittleEndian);
-    let ref debug_line = DebugLine::new(&debug_sections[".debug_line"], LittleEndian);
+    let ref debug_str = DebugStr::new(&debug_sections.get(".debug_str").ok_or(Error::MissingSection)?, LittleEndian);
+    let ref debug_abbrev = DebugAbbrev::new(&debug_sections.get(".debug_abbrev").ok_or(Error::MissingSection)?, LittleEndian);
+    let ref debug_info = DebugInfo::new(&debug_sections.get(".debug_info").ok_or(Error::MissingSection)?, LittleEndian);
+    let ref debug_line = DebugLine::new(&debug_sections.get(".debug_line").ok_or(Error::MissingSection)?, LittleEndian);
 
     let mut iter = debug_info.units();
     while let Some(unit) = iter.next().unwrap_or(None) {
