@@ -14,7 +14,7 @@
  */
 
 use std::fs;
-use std::path::Path;
+use std::io::{self, Write};
 
 use convert::convert;
 
@@ -22,17 +22,36 @@ extern crate gimli;
 #[macro_use]
 extern crate serde_json;
 extern crate vlq;
+extern crate clap;
+
+use clap::{Arg, App};
 
 mod convert;
 mod dwarf;
 mod to_json;
 mod wasm;
 
-const INPUT_FILE: &str = "gcd.wasm";
-const OUTPUT_FILE: &str = "./test.json";
-
 fn main() {
-    let wasm = fs::read(Path::new(INPUT_FILE)).expect("failed to read wasm input");
+    let matches = App::new("dwarf-to-json")
+                          .version("0.1.10")
+                          .author("Yury Delendik <ydelendik@mozilla.com>")
+                          .arg(Arg::with_name("output")
+                               .short("o")
+                               .takes_value(true))
+                          .arg(Arg::with_name("INPUT")
+                               .required(true))
+                          .get_matches();
+
+    let input_path = matches.value_of("INPUT").unwrap();
+    let wasm = fs::read(input_path).expect("failed to read wasm input");
+
     let json = convert(&wasm, true).expect("json");
-    fs::write(Path::new(OUTPUT_FILE), &json).expect("failed to write JSON");
+
+    match matches.value_of("output") {
+        Some(output_path) => fs::write(output_path, &json).expect("failed to write JSON"),
+        None => {
+            let stdout = io::stdout();
+            stdout.lock().write(&json).expect("failed to write JSON");
+        }
+    }
 }
