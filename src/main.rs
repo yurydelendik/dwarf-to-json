@@ -16,7 +16,7 @@
 use std::fs;
 use std::io::{self, Write};
 
-use convert::convert;
+use crate::convert::convert;
 
 extern crate gimli;
 #[macro_use]

@@ -13,12 +13,12 @@
  * limitations under the License.
  */
 
-use dwarf;
-use dwarf::{get_debug_loc, get_debug_scopes, LocationInfo};
+use crate::dwarf;
+use crate::dwarf::{get_debug_loc, get_debug_scopes, LocationInfo};
 use gimli;
 use serde_json;
-use to_json::convert_debug_info_to_json;
-use wasm::{WasmDecoder, WasmFormatError};
+use crate::to_json::convert_debug_info_to_json;
+use crate::wasm::{WasmDecoder, WasmFormatError};
 
 use std::collections::HashMap;
 use std::str;
