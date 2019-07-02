@@ -38,7 +38,8 @@ impl From<dwarf::Error> for Error {
     fn from(err: dwarf::Error) -> Self {
         match err {
             dwarf::Error::GimliError(e) => Error::GimliError(e),
-            dwarf::Error::MissingDwarfEntry | dwarf::Error::DataFormat => Error::DataFormat,
+            dwarf::Error::MissingDwarfEntry | dwarf::Error::MissingSection
+                                            | dwarf::Error::DataFormat => Error::DataFormat,
         }
     }
 }
