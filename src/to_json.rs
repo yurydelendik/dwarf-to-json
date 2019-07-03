@@ -28,7 +28,7 @@ fn convert_expr(a: &[u8]) -> Result<Value, Error> {
     Ok(json!(result))
 }
 
-pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Result<Value, Error> {
+pub fn convert_scopes(infos: &[DebugInfoObj]) -> Result<Value, Error> {
     let mut result = Vec::new();
     for entry in infos {
         let mut dict = Map::new();
@@ -73,7 +73,7 @@ pub fn convert_scopes(infos: &Vec<DebugInfoObj>) -> Result<Value, Error> {
             };
             dict.insert(attr_name.to_string(), value);
         }
-        if entry.children.len() > 0 {
+        if !entry.children.is_empty() {
             dict.insert("children".to_string(), convert_scopes(&entry.children)?);
         }
         result.push(json!(dict));
@@ -98,13 +98,13 @@ pub fn convert_debug_info_to_json(
         let address = loc.address as i64 + code_section_offset;
         let address_delta = address - last_address;
         encode(address_delta, &mut buffer).unwrap();
-        let source_id = loc.source_id as i64;
+        let source_id = i64::from(loc.source_id);
         let source_id_delta = source_id - last_source_id;
         encode(source_id_delta, &mut buffer).unwrap();
-        let line = loc.line as i64 - 1;
+        let line = i64::from(loc.line) - 1;
         let line_delta = line - last_line;
         encode(line_delta, &mut buffer).unwrap();
-        let column = if loc.column == 0 { 0 } else { loc.column - 1 } as i64;
+        let column = i64::from(if loc.column == 0 { 0 } else { loc.column - 1 });
         let column_delta = column - last_column;
         encode(column_delta, &mut buffer).unwrap();
         buffer.push(b',');
@@ -115,7 +115,7 @@ pub fn convert_debug_info_to_json(
         last_column = column;
     }
 
-    if di.locations.len() > 0 {
+    if !di.locations.is_empty() {
         buffer.pop();
     }
 

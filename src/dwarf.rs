@@ -62,7 +62,7 @@ pub struct DebugInfoObj<'a> {
 fn is_out_of_range(low_pc: i64, high_pc: i64) -> bool {
     let fn_size = (high_pc - low_pc) as u32;
     let fn_size_field_len = ((fn_size + 1).next_power_of_two().trailing_zeros() + 6) / 7;
-    low_pc < 1 + fn_size_field_len as i64
+    low_pc < i64::from(1 + fn_size_field_len)
 }
 
 fn is_subprogram(item: &DebugInfoObj) -> bool {
@@ -121,7 +121,7 @@ fn remove_dead_functions(items: &mut Vec<DebugInfoObj>) {
                         i += 1;
                     }
                 }
-                ranges.len() == 0
+                ranges.is_empty()
             } else {
                 false
             };
@@ -134,7 +134,7 @@ fn remove_dead_functions(items: &mut Vec<DebugInfoObj>) {
             continue;
         }
 
-        if item.children.len() > 0 {
+        if !item.children.is_empty() {
             remove_dead_functions(&mut item.children);
         }
     }
@@ -189,7 +189,7 @@ fn get_source_id<R: Reader>(
         };
         file_name = format!("{}{}/{}", prefix, directory, &file_name);
     }
-    let id = (if let Some(position) = sources.iter().position(|&ref x| *x == file_name) {
+    let id = (if let Some(position) = sources.iter().position(|x| *x == file_name) {
         position
     } else {
         let id = sources.len();
@@ -200,11 +200,11 @@ fn get_source_id<R: Reader>(
 }
 
 fn decode_data2(d: &[u8]) -> i64 {
-    (d[0] as i64) | ((d[1] as i64) << 8)
+    (i64::from(d[0]) | i64::from(d[1]) << 8)
 }
 
 fn decode_data4(d: &[u8]) -> i64 {
-    (d[0] as i64) | ((d[1] as i64) << 8) | ((d[2] as i64) << 16) | ((d[3] as i64) << 24)
+    i64::from(d[0]) | (i64::from(d[1]) << 8) | (i64::from(d[2]) << 16) | (i64::from(d[3]) << 24)
 }
 
 pub fn get_debug_scopes<'b>(
@@ -212,10 +212,10 @@ pub fn get_debug_scopes<'b>(
     sources: &mut Vec<String>,
 ) -> Result<Vec<DebugInfoObj<'b>>, Error> {
     // see https://gist.github.com/yurydelendik/802f36983d50cedb05f984d784dc5159
-    let ref debug_str = DebugStr::new(&debug_sections[".debug_str"], LittleEndian);
-    let ref debug_abbrev = DebugAbbrev::new(&debug_sections[".debug_abbrev"], LittleEndian);
-    let ref debug_info = DebugInfo::new(&debug_sections[".debug_info"], LittleEndian);
-    let ref debug_line = DebugLine::new(&debug_sections[".debug_line"], LittleEndian);
+    let debug_str = &DebugStr::new(&debug_sections[".debug_str"], LittleEndian);
+    let debug_abbrev = &DebugAbbrev::new(&debug_sections[".debug_abbrev"], LittleEndian);
+    let debug_info = &DebugInfo::new(&debug_sections[".debug_info"], LittleEndian);
+    let debug_line = &DebugLine::new(&debug_sections[".debug_line"], LittleEndian);
 
     let debug_ranges = match debug_sections.get(".debug_ranges") {
         Some(section) => DebugRanges::new(section, LittleEndian),
@@ -268,8 +268,8 @@ pub fn get_debug_scopes<'b>(
                         .program(
                             offset,
                             unit_infos.address_size,
-                            unit_infos.comp_dir.clone(),
-                            unit_infos.comp_name.clone(),
+                            unit_infos.comp_dir,
+                            unit_infos.comp_name,
                         ).ok(),
                     _ => None,
                 }
@@ -300,7 +300,7 @@ pub fn get_debug_scopes<'b>(
                             )
                         }
                     }
-                    AttributeValue::Data1(u) => DebugAttrValue::I64(u[0] as i64),
+                    AttributeValue::Data1(u) => DebugAttrValue::I64(i64::from(u[0])),
                     AttributeValue::Data2(u) => DebugAttrValue::I64(decode_data2(&u.0)),
                     AttributeValue::Data4(u) => DebugAttrValue::I64(decode_data4(&u.0)),
                     AttributeValue::Sdata(i) => DebugAttrValue::I64(i),
@@ -417,10 +417,10 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> Result<LocationIn
     let mut locations: Vec<LocationRecord> = Vec::new();
     let mut source_to_id_map: HashMap<u64, usize> = HashMap::new();
 
-    let ref debug_str = DebugStr::new(&debug_sections.get(".debug_str").ok_or(Error::MissingSection)?, LittleEndian);
-    let ref debug_abbrev = DebugAbbrev::new(&debug_sections.get(".debug_abbrev").ok_or(Error::MissingSection)?, LittleEndian);
-    let ref debug_info = DebugInfo::new(&debug_sections.get(".debug_info").ok_or(Error::MissingSection)?, LittleEndian);
-    let ref debug_line = DebugLine::new(&debug_sections.get(".debug_line").ok_or(Error::MissingSection)?, LittleEndian);
+    let debug_str = &DebugStr::new(&debug_sections.get(".debug_str").ok_or(Error::MissingSection)?, LittleEndian);
+    let debug_abbrev = &DebugAbbrev::new(&debug_sections.get(".debug_abbrev").ok_or(Error::MissingSection)?, LittleEndian);
+    let debug_info = &DebugInfo::new(&debug_sections.get(".debug_info").ok_or(Error::MissingSection)?, LittleEndian);
+    let debug_line = &DebugLine::new(&debug_sections.get(".debug_line").ok_or(Error::MissingSection)?, LittleEndian);
 
     let mut iter = debug_info.units();
     while let Some(unit) = iter.next().unwrap_or(None) {
@@ -464,12 +464,12 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> Result<LocationIn
                     } else {
                         String::from("<unknown>")
                     };
-                    if !file_path.starts_with("/") && comp_dir.is_some() {
+                    if !file_path.starts_with('/') && comp_dir.is_some() {
                         file_path = format!("{}/{}", comp_dir.unwrap().to_string_lossy(), file_path);
                     }
                     sources
                         .iter()
-                        .position(|&ref p| *p == file_path)
+                        .position(|p| *p == file_path)
                         .unwrap_or_else(|| {
                             let index = sources.len();
                             sources.push(file_path);
@@ -506,7 +506,7 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> Result<LocationIn
                     let fn_size_field_len =
                         ((fn_size + 1).next_power_of_two().trailing_zeros() + 6) / 7;
                     // Remove function if it starts at its size field location.
-                    if locations[block_start_loc].address <= fn_size_field_len as u64 {
+                    if locations[block_start_loc].address <= u64::from(fn_size_field_len) {
                         locations.drain(block_start_loc..);
                     }
                     block_start_loc = locations.len();

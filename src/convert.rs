@@ -102,7 +102,7 @@ fn fix_source_urls(info: &mut LocationInfo, prefixes_bytes: &[u8]) -> Result<(),
     let mut prefixes_decoder = WasmDecoder::new(prefixes_bytes);
     let prefixes_pairs: Vec<Vec<String>> =
         serde_json::from_str(prefixes_decoder.str()?).unwrap_or(vec![]);
-    if prefixes_pairs.len() == 0 {
+    if prefixes_pairs.is_empty() {
         return Ok(());
     }
     for i in 0..info.sources.len() {

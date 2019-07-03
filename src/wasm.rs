@@ -28,7 +28,7 @@ fn read_u32_leb128(slice: &[u8]) -> Result<(u32, usize)> {
     for _ in 0..5 {
         let byte = unsafe { *slice.get_unchecked(position) };
         position += 1;
-        result |= ((byte & 0x7F) as u32) << shift;
+        result |= u32::from(byte & 0x7F) << shift;
         if (byte & 0x80) == 0 {
             break;
         }
@@ -56,7 +56,7 @@ impl<'a> WasmDecoder<'a> {
     }
 
     pub fn eof(&self) -> bool {
-        self.data.len() == 0
+        self.data.is_empty()
     }
 
     pub fn u32(&mut self) -> Result<u32> {
