@@ -51,7 +51,7 @@ fn main() {
         Some(output_path) => fs::write(output_path, &json).expect("failed to write JSON"),
         None => {
             let stdout = io::stdout();
-            stdout.lock().write(&json).expect("failed to write JSON");
+            stdout.lock().write_all(&json).expect("failed to write JSON");
         }
     }
 }
