@@ -20,7 +20,8 @@ use gimli;
 
 use gimli::{
     AttributeValue, DebugAbbrev, DebugInfo, DebugLine, DebugLoc, DebugLocLists, DebugRanges,
-    DebugRngLists, DebugStr, LittleEndian, LocationLists, RangeLists
+    DebugRngLists, DebugStr, LittleEndian, LocationLists, RangeLists, RawLocListEntry,
+    RawRngListEntry,
 };
 
 trait Reader: gimli::Reader<Offset = usize> {}
@@ -57,6 +58,13 @@ pub struct DebugInfoObj<'a> {
     pub tag: &'static str,
     pub attrs: HashMap<&'static str, DebugAttrValue<'a>>,
     pub children: Vec<DebugInfoObj<'a>>,
+}
+
+// Linkers mark ranges of removed code with tombstone addresses
+// (e.g. wasm-ld uses 0xfffffffe and 0xffffffff).
+fn is_tombstone(addr: u64, address_size: u8) -> bool {
+    let max = !0u64 >> (64 - u32::from(address_size) * 8);
+    addr >= max - 1
 }
 
 fn is_out_of_range(low_pc: i64, high_pc: i64) -> bool {
@@ -314,26 +322,64 @@ pub fn get_debug_scopes<'b>(
                     }
                     AttributeValue::RangeListsRef(r) => {
                         let low_pc = 0;
-                        let mut ranges =
-                            rnglists.ranges(r, unit.version(), unit.address_size(), low_pc)?;
+                        let address_size = unit.address_size();
+                        let mut ranges = rnglists.raw_ranges(r, unit.version(), address_size)?;
+                        let mut base = low_pc;
                         let mut result = Vec::new();
                         while let Some(range) = ranges.next()? {
-                            assert!(range.begin <= range.end);
-                            result.push((range.begin as i64, range.end as i64));
+                            let (begin, end) = match range {
+                                RawRngListEntry::BaseAddress { addr } => {
+                                    base = addr;
+                                    continue;
+                                }
+                                RawRngListEntry::OffsetPair { begin, end } => {
+                                    if is_tombstone(base, address_size) {
+                                        continue;
+                                    }
+                                    (base + begin, base + end)
+                                }
+                                RawRngListEntry::StartEnd { begin, end } => (begin, end),
+                                RawRngListEntry::StartLength { begin, length } => {
+                                    (begin, begin + length)
+                                }
+                                _ => return Err(Error::GimliError(gimli::Error::UnsupportedAddressIndex)),
+                            };
+                            if is_tombstone(begin, address_size) || begin > end {
+                                continue;
+                            }
+                            result.push((begin as i64, end as i64));
                         }
                         DebugAttrValue::Ranges(result)
                     }
                     AttributeValue::LocationListsRef(r) => {
                         let low_pc = 0;
-                        let mut locs =
-                            loclists.locations(r, unit.version(), unit.address_size(), low_pc)?;
+                        let address_size = unit.address_size();
+                        let mut locs = loclists.raw_locations(r, unit.version(), address_size)?;
+                        let mut base = low_pc;
                         let mut result = Vec::new();
                         while let Some(loc) = locs.next()? {
-                            result.push((
-                                loc.range.begin as i64,
-                                loc.range.end as i64,
-                                loc.data.0.slice(),
-                            ));
+                            let (begin, end, data) = match loc {
+                                RawLocListEntry::BaseAddress { addr } => {
+                                    base = addr;
+                                    continue;
+                                }
+                                RawLocListEntry::OffsetPair { begin, end, data } => {
+                                    if is_tombstone(base, address_size) {
+                                        continue;
+                                    }
+                                    (base + begin, base + end, data)
+                                }
+                                RawLocListEntry::StartEnd { begin, end, data } => (begin, end, data),
+                                RawLocListEntry::StartLength { begin, length, data } => {
+                                    (begin, begin + length, data)
+                                }
+                                RawLocListEntry::DefaultLocation { data } => (0, u64::max_value(), data),
+                                _ => return Err(Error::GimliError(gimli::Error::UnsupportedAddressIndex)),
+                            };
+                            if is_tombstone(begin, address_size) || begin > end {
+                                continue;
+                            }
+                            result.push((begin as i64, end as i64, data.0.slice()));
                         }
                         DebugAttrValue::LocationList(result)
                     }
