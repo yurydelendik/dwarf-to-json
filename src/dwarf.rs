@@ -552,7 +552,9 @@ pub fn get_debug_loc(debug_sections: &HashMap<&str, &[u8]>) -> Result<LocationIn
                     let fn_size_field_len =
                         ((fn_size + 1).next_power_of_two().trailing_zeros() + 6) / 7;
                     // Remove function if it starts at its size field location.
-                    if locations[block_start_loc].address <= u64::from(fn_size_field_len) {
+                    if locations[block_start_loc].address <= u64::from(fn_size_field_len)
+                        || is_tombstone(locations[block_start_loc].address, unit.address_size())
+                    {
                         locations.drain(block_start_loc..);
                     }
                     block_start_loc = locations.len();
