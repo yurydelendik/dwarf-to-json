@@ -7,7 +7,17 @@ It is planned to implement serialize and extends the JSON with one additional fi
 # Compiling
 
 ```
-cargo +nightly build --target=wasm32-unknown-unknown --lib --release
-cp ./target/wasm32-unknown-unknown/release/dwarf_to_json.wasm \
-  $DEBUGGER_HTML/assets/wasm/
+rustup target add wasm32-unknown-unknown
+cargo build --target=wasm32-unknown-unknown --lib --release
+```
+
+Firefox DevTools uses the resulting
+`./target/wasm32-unknown-unknown/release/dwarf_to_json.wasm`, which lives in
+mozilla-central at
+`devtools/client/shared/source-map-loader/wasm-dwarf/dwarf_to_json.wasm`.
+
+A native command line tool is also available:
+
+```
+cargo run --release --bin dwarf-to-json -- input.wasm -o output.map
 ```
